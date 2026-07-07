@@ -57,6 +57,8 @@ class Order{
         Quantity GetInitialQuantity() const {return initialQuantity_;}
         Quantity GetRemainingQuantity() const {return remainingQuantity_;}
         Quantity GetFilledQuantity() const {return initialQuantity_ - remainingQuantity_;}
+        bool IsFilled() const {return remainingQuantity_ == 0;}
+
         void Fill(Quantity quantity){
             if(quantity > remainingQuantity_){
                 throw std::logic_error("Order (" + std::to_string(GetOrderId()) + ") cannot be overfilled");
@@ -134,6 +136,58 @@ class OrderBook{
         std::map<Price, OrderPointers, std::less<Price>> asks_;
         std::map<Price, OrderPointers, std::greater<Price>> bids_;
         std::unordered_map<OrderId, OrderEntry> orders_;
+
+        bool CanMatch(Side side, Price price) const {   //checks whether an order can currently be matched or not
+            if(side == Side::Buy){
+                if(asks_.empty()) return false;
+                
+                Price bestAsk = asks_.begin()->first;
+                return price >= bestAsk;
+            }else{
+                if(bids_.empty()) return false;
+
+                Price bestBid = bids_.begin()->first;
+                return price <= bestBid; 
+            }
+        }
+
+        Trades MatchOrders(){
+            Trades trades;
+            trades.reserve(orders_.size());
+            
+            while(1){
+                if(bids_.empty() || asks_.empty()) break;
+
+                const Price& bidPrice = bids_.begin()->first, askPrice = asks_.begin()->first;
+                OrderPointers& bestBids = bids_.begin()->second;
+                OrderPointers& bestAsks = asks_.begin()->second;
+                
+                if(bidPrice <= askPrice) break; //guard clause. getting past this means that the bestBids and bestAsk prices can be matched.
+
+                while(bestBids.size() && bestAsks.size()){
+                    auto& bestBid = bestBids.front(); //get the earliest submitted order from tbe bestBids level
+                    auto& bestAsk = bestAsks.front(); //we do this cause we're following price time priority
+                    
+                    Quantity matchedQuantity = std::min(bestBid->GetRemainingQuantity(), bestAsk->GetRemainingQuantity());
+                    bestBid->Fill(matchedQuantity);
+                    bestAsk->Fill(matchedQuantity);
+                    
+                    if(bestBid->IsFilled()){
+                        bestBids.pop_front();
+                        orders_.erase(bestBid->GetOrderId());
+                        if(bestBids.empty()) bids_.erase(bidPrice);
+                    }
+                    if(bestAsk->IsFilled()){
+                        bestAsks.pop_front();
+                        orders_.erase(bestAsk->GetOrderId());
+                        if(bestAsks.empty()) asks_.erase(askPrice);
+                    }
+                    trades.push_back(Trade{
+                        TradeInfo{bestBid->GetOrderId(), bestBid->GetPrice(), matchedQuantity},
+                        TradeInfo{bestAsk->GetOrderId(), bestAsk->GetPrice(), matchedQuantity}});
+                }
+            }
+        }
 };
 
 int main(){
