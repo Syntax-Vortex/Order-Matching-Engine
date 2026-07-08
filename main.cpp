@@ -249,6 +249,43 @@ class OrderBook{
 
             orders_.erase(orderId);
         }
+
+        Trades MatchOrder(OrderModify order){
+            if(orders_.find(order.GetOrderId()) == orders_.end()) return {};
+
+            OrderPointer& existingOrderPointer = orders_.at(order.GetOrderId()).order_;
+            CancelOrder(order.GetOrderId());
+            return AddOrder(order.ToOrderPointer(existingOrderPointer->GetOrderType()));
+        }
+
+        std::size_t Size() const {return orders_.size();}
+
+        OrderbookLevels GetOrderLevels() const{
+            Levels bids, asks;
+            bids.reserve(orders_.size());
+            asks.reserve(orders_.size());
+
+            auto CreateLevelInfos = [](Price price, const OrderPointers& orders){
+                return LevelInfo{price, std::accumulate(orders.begin(), orders.end(), (Quantity)0,
+                    [](Quantity runningSum, const OrderPointer& order){
+                        return runningSum + order->GetRemainingQuantity();
+                    })};
+            };
+
+            for(const auto &p : bids_){
+                Price price = p.first;
+                const OrderPointers &orders = p.second;
+                bids.push_back(CreateLevelInfos(price, orders));
+            }
+
+            for(const auto &p : asks_){
+                Price price = p.first;
+                const OrderPointers &orders = p.second;
+                asks.push_back(CreateLevelInfos(price, orders));
+            }
+
+            return OrderbookLevels{bids, asks};
+        }
 };
 
 int main(){
