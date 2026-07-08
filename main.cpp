@@ -187,6 +187,67 @@ class OrderBook{
                         TradeInfo{bestAsk->GetOrderId(), bestAsk->GetPrice(), matchedQuantity}});
                 }
             }
+
+            if(!bids_.empty()){
+                OrderPointers& bids = bids_.begin()->second;
+                OrderPointer& order = bids.front();
+                if(order->GetOrderType() == OrderType::FillAndKill){
+                    CancelOrder(order->GetOrderId());
+                }
+            }
+            if(!asks_.empty()){
+                OrderPointers& asks = asks_.begin()->second;
+                OrderPointer& order = asks.front();
+                if(order->GetOrderType() == OrderType::FillAndKill){
+                    CancelOrder(order->GetOrderId());
+                }
+            }
+        }
+
+    public:
+        Trades AddOrder(OrderPointer order){
+            if(orders_.find(order->GetOrderId()) != orders_.end()){
+                return {};
+            }else if(order->GetOrderType() == OrderType::FillAndKill && !CanMatch(order->GetSide(), order->GetPrice())){
+                return {};
+            }
+
+            OrderPointers::iterator iterator;
+            if(order->GetSide() == Side::Buy){
+                OrderPointers& orders = bids_[order->GetPrice()];
+                orders.push_back(order);
+                iterator = std::next(orders.begin(), orders.size() - 1);
+
+            }else{
+                OrderPointers& orders = asks_[order->GetPrice()];
+                orders.push_back(order);
+                iterator = std::next(orders.begin(), orders.size() - 1);
+            }
+
+            orders_[order->GetOrderId()] = OrderEntry{order, iterator};
+
+            return MatchOrders();
+        }
+
+        void CancelOrder(OrderId orderId){
+            if(orders_.find(orderId) == orders_.end()) return;
+
+            OrderPointer& order = orders_.at(orderId).order_;
+            OrderPointers::iterator orderIterator = orders_.at(orderId).location_;
+            
+            if(order->GetSide() == Side::Sell){
+                Price price = order->GetPrice();
+                OrderPointers& orders = asks_.at(price);
+                orders.erase(orderIterator);
+                if(orders.empty()) asks_.erase(price);
+            }else{
+                Price price = order->GetPrice();
+                OrderPointers& orders = bids_.at(price);
+                orders.erase(orderIterator);
+                if(orders.empty()) bids_.erase(price);
+            }
+
+            orders_.erase(orderId);
         }
 };
 
