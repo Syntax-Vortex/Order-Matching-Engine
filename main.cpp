@@ -44,7 +44,7 @@ class Order{
         Order(OrderType orderType, OrderId orderId, Side side, Price price, Quantity quantity):
             orderType_{orderType},
             orderId_{orderId},
-            side_{side_},
+            side_{side},
             price_{price},
             initialQuantity_{quantity},
             remainingQuantity_{quantity}
@@ -158,15 +158,15 @@ class OrderBook{
             while(1){
                 if(bids_.empty() || asks_.empty()) break;
 
-                const Price& bidPrice = bids_.begin()->first, askPrice = asks_.begin()->first;
+                const Price& bidPrice = bids_.begin()->first, &askPrice = asks_.begin()->first;
                 OrderPointers& bestBids = bids_.begin()->second;
                 OrderPointers& bestAsks = asks_.begin()->second;
                 
-                if(bidPrice <= askPrice) break; //guard clause. getting past this means that the bestBids and bestAsk prices can be matched.
+                if(bidPrice < askPrice) break; //guard clause. getting past this means that the bestBids and bestAsk prices can be matched.
 
                 while(bestBids.size() && bestAsks.size()){
-                    auto& bestBid = bestBids.front(); //get the earliest submitted order from tbe bestBids level
-                    auto& bestAsk = bestAsks.front(); //we do this cause we're following price time priority
+                    auto bestBid = bestBids.front(); //get the earliest submitted order from tbe bestBids level
+                    auto bestAsk = bestAsks.front(); //we do this cause we're following price time priority
                     
                     Quantity matchedQuantity = std::min(bestBid->GetRemainingQuantity(), bestAsk->GetRemainingQuantity());
                     bestBid->Fill(matchedQuantity);
@@ -175,17 +175,17 @@ class OrderBook{
                     if(bestBid->IsFilled()){
                         bestBids.pop_front();
                         orders_.erase(bestBid->GetOrderId());
-                        if(bestBids.empty()) bids_.erase(bidPrice);
                     }
                     if(bestAsk->IsFilled()){
                         bestAsks.pop_front();
                         orders_.erase(bestAsk->GetOrderId());
-                        if(bestAsks.empty()) asks_.erase(askPrice);
                     }
                     trades.push_back(Trade{
                         TradeInfo{bestBid->GetOrderId(), bestBid->GetPrice(), matchedQuantity},
                         TradeInfo{bestAsk->GetOrderId(), bestAsk->GetPrice(), matchedQuantity}});
                 }
+                if(bestBids.empty()) bids_.erase(bidPrice);
+                if(bestAsks.empty()) asks_.erase(askPrice);
             }
 
             if(!bids_.empty()){
@@ -202,6 +202,8 @@ class OrderBook{
                     CancelOrder(order->GetOrderId());
                 }
             }
+
+            return trades;
         }
 
     public:
@@ -253,7 +255,7 @@ class OrderBook{
         Trades MatchOrder(OrderModify order){
             if(orders_.find(order.GetOrderId()) == orders_.end()) return {};
 
-            OrderPointer& existingOrderPointer = orders_.at(order.GetOrderId()).order_;
+            OrderPointer existingOrderPointer = orders_.at(order.GetOrderId()).order_;
             CancelOrder(order.GetOrderId());
             return AddOrder(order.ToOrderPointer(existingOrderPointer->GetOrderType()));
         }
